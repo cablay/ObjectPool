@@ -12,6 +12,8 @@ public static class ObjectPool
     static Dictionary<GameObject, Pool> pools = new Dictionary<GameObject, Pool>(); //collection of pools where the key is the GameObject to be pooled
     static bool initialized = false; //initialization flag is used so the user doesn't have to intialize explicitly
 
+
+
     /// <summary>
     /// Returns a spawned clone of the GameObject original from a pool. If no pool exists for original one is created.
     /// </summary>
@@ -126,76 +128,6 @@ public static class ObjectPool
     public static T Spawn<T>(T original, Vector3 position, Quaternion rotation, Transform parent) where T : Component
     {
         return iSpawn(original, position, rotation, parent);
-    }
-
-    //Internal function to spawn a pooled clone from user arguments, creating a new pool for original if necessary.
-    static GameObject iSpawn(GameObject original, Vector3? pos = null, Quaternion? rot = null, Transform iParent = null, bool iWorldSpace = false)
-    {
-        if (original == null)
-        {
-            Debug.LogError("ObjectPool: Tried to Spawn() an object that does not exist.");
-            return null;
-        }
-
-        if (!initialized) //do any needed one-time setup without any prerequisite user action
-        {
-            Initialize();
-        }
-
-        if (!pools.ContainsKey(original)) //create new Pool if none exists for the given GameObject
-        {
-            pools.Add(original, new Pool(original));
-        }
-        else if (pools[original] == null) //create new Pool if one no longer exists for the given GameObject
-        {
-            Debug.LogWarning("ObjectPool: Tried to Spawn from a pool that no longer exists. Creating new pool.");
-            pools[original] = new Pool(original);
-        }
-
-        Vector3 position;
-        Quaternion rotation;
-
-        if (pos.HasValue && rot.HasValue) //use user-specified Transform values
-        {
-            position = (Vector3)pos;
-            rotation = (Quaternion)rot;
-        }
-        else if (iParent == null || iWorldSpace) //use original's Transform values (no parent or as specified by user)
-        {
-            position = original.transform.position;
-            rotation = original.transform.rotation;
-        }
-        else //use user-specified parent's Transform values
-        {
-            position = iParent.position + original.transform.position;
-            rotation = iParent.rotation * original.transform.rotation;
-        }
-
-        return pools[original].Spawn(position, rotation, iParent); //get and return GameObject from the correct pool
-    }
-
-    //Component-returning wrapper for iSpawn(GameObject, ...)
-    static T iSpawn<T>(T original, Vector3? pos = null, Quaternion? rot = null, Transform iParent = null, bool iWorldSpace = false) where T : Component
-    {
-        if (original == null)
-        {
-            Debug.LogError("ObjectPool: Tried to Spawn() an object with a Component that does not exist.");
-            return null;
-        }
-
-        GameObject inst = iSpawn(original.gameObject, pos, rot, iParent, iWorldSpace); //get GameObject from the correct pool
-        T requestedComponent = inst.GetComponent<T>();
-
-        if (requestedComponent != null) //successfully spawned GameObject with requested Component
-        {
-            return requestedComponent;
-        }
-        else
-        {
-            Debug.LogError("ObjectPool: Tried to Spawn() an object with a component that does not exist on the pooled objects.");
-            Despawn(inst); //recycle spawned GameObject
-            return null;
-        }
     }
 
     /// <summary>
@@ -480,6 +412,76 @@ public static class ObjectPool
         DoDestroyOnLoad(original.gameObject);
     }
 
+    //Internal function to spawn a pooled clone from user arguments, creating a new pool for original if necessary.
+    static GameObject iSpawn(GameObject original, Vector3? pos = null, Quaternion? rot = null, Transform iParent = null, bool iWorldSpace = false)
+    {
+        if (original == null)
+        {
+            Debug.LogError("ObjectPool: Tried to Spawn() an object that does not exist.");
+            return null;
+        }
+
+        if (!initialized) //do any needed one-time setup without any prerequisite user action
+        {
+            Initialize();
+        }
+
+        if (!pools.ContainsKey(original)) //create new Pool if none exists for the given GameObject
+        {
+            pools.Add(original, new Pool(original));
+        }
+        else if (pools[original] == null) //create new Pool if one no longer exists for the given GameObject
+        {
+            Debug.LogWarning("ObjectPool: Tried to Spawn from a pool that no longer exists. Creating new pool.");
+            pools[original] = new Pool(original);
+        }
+
+        Vector3 position;
+        Quaternion rotation;
+
+        if (pos.HasValue && rot.HasValue) //use user-specified Transform values
+        {
+            position = (Vector3)pos;
+            rotation = (Quaternion)rot;
+        }
+        else if (iParent == null || iWorldSpace) //use original's Transform values (no parent or as specified by user)
+        {
+            position = original.transform.position;
+            rotation = original.transform.rotation;
+        }
+        else //use user-specified parent's Transform values
+        {
+            position = iParent.position + original.transform.position;
+            rotation = iParent.rotation * original.transform.rotation;
+        }
+
+        return pools[original].Spawn(position, rotation, iParent); //get and return GameObject from the correct pool
+    }
+
+    //Component-returning wrapper for iSpawn(GameObject, ...)
+    static T iSpawn<T>(T original, Vector3? pos = null, Quaternion? rot = null, Transform iParent = null, bool iWorldSpace = false) where T : Component
+    {
+        if (original == null)
+        {
+            Debug.LogError("ObjectPool: Tried to Spawn() an object with a Component that does not exist.");
+            return null;
+        }
+
+        GameObject inst = iSpawn(original.gameObject, pos, rot, iParent, iWorldSpace); //get GameObject from the correct pool
+        T requestedComponent = inst.GetComponent<T>();
+
+        if (requestedComponent != null) //successfully spawned GameObject with requested Component
+        {
+            return requestedComponent;
+        }
+        else
+        {
+            Debug.LogError("ObjectPool: Tried to Spawn() an object with a component that does not exist on the pooled objects.");
+            Despawn(inst); //recycle spawned GameObject
+            return null;
+        }
+    }
+
     //Remove pools with original GameObjects that no longer exist
     static void DestroyInvalidPools()
     {
@@ -640,15 +642,17 @@ public static class ObjectPool
         }
     }
 
+
+
     class PooledObject : MonoBehaviour
     {
-        [HideInInspector]
         public Pool pool; //the pool that the GameObject that this component is attached to belongs to
 
         //Assocaite the PooledObject with the given pool and hook up the relevant functions to the pool's events
         public void Initialize(Pool pool, UnityEvent despawnEvent, UnityEvent destroyEvent, UnityEvent dontDestroyOnLoadEvent)
         {
             this.pool = pool;
+            hideFlags = HideFlags.HideInInspector;
 
             despawnEvent.AddListener(DespawnNow);
             destroyEvent.AddListener(Destroy);
