@@ -14,8 +14,8 @@ public class Test : MonoBehaviour {
 	void Start ()
     {
         //StartCoroutine(SpawnDestroyedObject());
-        //Tests();
-        StartCoroutine(DestroyOnLoadTests());
+        Tests();
+        //StartCoroutine(DestroyOnLoadTests());
 	}
 
     IEnumerator DespawnBadObj()
@@ -62,14 +62,13 @@ public class Test : MonoBehaviour {
 
     void BadGenericInstantiate()
     {
-        FakeClass t = ObjectPool.Spawn(new FakeClass());
+        //FakeClass t = ObjectPool.Spawn(new FakeClass());
         //t.position = new Vector3(1f, 1f, 1f);
     }
 
     void Tests()
     {
-        DontDestroyOnLoad(instance);
-
+        StartCoroutine(SpawnDespawn());
     }
 
     IEnumerator DestroyOnLoadTests()
@@ -84,5 +83,29 @@ public class Test : MonoBehaviour {
         yield return new WaitForSeconds(2f);
 
         SceneManager.LoadScene("TestScene 1");
+    }
+
+    IEnumerator SpawnDespawn()
+    {
+        GameObject obj = ObjectPool.Spawn(instance);
+        //GameObject obj2 = ObjectPool.Spawn(obj);
+
+        //Dictionary<GameObject, int> table = new Dictionary<GameObject, int>();
+        //table.Add(obj, 1);
+        //Destroy(obj);
+
+        yield return new WaitForSeconds(1f);
+
+
+        //table.Remove((GameObject)null);
+
+
+
+        ObjectPool.Despawn(obj);
+        //ObjectPool.DontDestroyOnLoad(prefab);
+
+        //yield return new WaitForSeconds(3f);
+
+        //SceneManager.LoadScene("TestScene 1");
     }
 }
