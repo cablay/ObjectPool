@@ -17,12 +17,12 @@ public class PoolInspector : MonoBehaviour {
 
         if (original == null)
         {
-            Debug.LogWarning("PoolInspector: Tried to Initialize using a GameObject that does not exist.");
+            ObjectPool.logger.LogWarning("PoolInspector", "Tried to Initialize using a GameObject that does not exist.");
         }
 
         if (this.original != null)
         {
-            Debug.LogWarning("PoolInspector: Tried to Initialize a PoolInspector that was already initialized.");
+            ObjectPool.logger.LogWarning("PoolInspector", "Tried to Initialize a PoolInspector that was already initialized.");
         }
     }
 

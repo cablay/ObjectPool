@@ -9,9 +9,50 @@ using UnityEngine.SceneManagement;
 /// </summary>
 public static class ObjectPool
 {
-    public enum PoolProperties { DestroyOnLoad, ActiveObjects, InactiveObjects, MaxSize};
+    public enum PoolProperties { DestroyOnLoad, ActiveObjects, InactiveObjects, MaxSize}; //pool properties that can be queried
 
-    public static int DEFAULT_MAX_POOL_SIZE = int.MaxValue;
+    public static Logger logger
+    {
+        get
+        {
+            return m_logger;
+        }
+        set
+        {
+            if (value != null)
+            {
+                m_logger = value;
+            }
+            else
+            {
+                LogError("Tried to set logger to a Logger object that does not exist.");
+            }
+        }
+    }
+
+    public static int defaultMaxPoolSize
+    {
+        get
+        {
+            return m_defaultMaxPoolSize;
+        }
+        set
+        {
+            if (value > 0)
+            {
+                m_defaultMaxPoolSize = value;
+            }
+            else
+            {
+                LogError("Tried to set defaultMaxPoolSize to a value less than 1.");
+            }
+        }
+    }
+
+    static Logger m_logger = new Logger(Debug.logger.logHandler); //publicly-accessible Logger to allow users to easily configure logging options
+    static int m_defaultMaxPoolSize = int.MaxValue; //allow user to set a global default max size for new pools created
+
+    enum PoolErrors { NullObject, NullPool, NoPool, NoError }; //common pool errors
 
     static Dictionary<GameObject, Pool> pools = new Dictionary<GameObject, Pool>(); //collection of pools where the key is the GameObject to be pooled
     static bool initialized = false; //initialization flag is used so the user doesn't have to intialize explicitly
@@ -143,7 +184,7 @@ public static class ObjectPool
     {
         if (obj == null) //check for bad or Destroyed object
         {
-            Debug.LogError("OjectPool: Tried to Despawn an object that does not exist.");
+            LogError("Tried to Despawn an object that does not exist.");
             return;
         }
 
@@ -152,19 +193,19 @@ public static class ObjectPool
 
         if (po == null) //ensure this was an object we created that hasn't been compromised
         {
-            Debug.LogWarning("ObjectPool: Tried to Despawn a non-pooled object. Destroying instead", obj);
+            LogWarning("Tried to Despawn a non-pooled object. Destroying instead.");
             Object.Destroy(obj);
         }
         else if (po.pool == null)
         {
-            Debug.LogWarning("ObjectPool: Tried to Despawn an object whose pool no longer exists. Destroying instead", obj);
+            LogWarning("Tried to Despawn an object whose pool no longer exists. Destroying instead.");
             Object.Destroy(obj);
         }
         else
         {
             if (!obj.activeSelf)
             {
-                Debug.Log("ObjectPool: Tried to Despawn an inactive object. Will still add to inactive pool.");
+                Log("Tried to Despawn an inactive object. Will still add to inactive pool.");
             }
 
             if (t == 0.0F) //no need to call the coroutine in PooledObject if we're Dewpawning now
@@ -179,22 +220,6 @@ public static class ObjectPool
     }
 
     /// <summary>
-    /// Despawns a pooled GameObject attached to Component obj, deactivating it and returning it to the pool.
-    /// </summary>
-    /// <param name="obj">The Component attached to a GameObject to despawn.</param>
-    /// <param name="t">The optional amount of time to delay before despawning the GameObject.</param>
-    public static void Despawn(Component obj, float t = 0.0F)
-    {
-        if (obj == null)
-        {
-            Debug.LogError("ObjectPool: Tried to Despawn an object with a component that does not exist.");
-            return;
-        }
-
-        Despawn(obj.gameObject, t);
-    }
-
-    /// <summary>
     /// Add the specified number of deactivated GameObjects to the pool made from original.
     /// </summary>
     /// <param name="original">An existing GameObject that you've made a pool from.</param>
@@ -203,7 +228,7 @@ public static class ObjectPool
     {
         if (original == null)
         {
-            Debug.LogError("ObjectPool: Tried to PreWarm a pool for an object that does not exist.");
+            LogError("Tried to PreWarm a pool for an object that does not exist.");
             return;
         }
 
@@ -218,27 +243,11 @@ public static class ObjectPool
         }
         else if (pools[original] == null)
         {
-            Debug.LogWarning("ObjectPool: Tried to PreWarm a pool that no longer exists. Creating new pool.");
+            LogWarning("Tried to PreWarm a pool that no longer exists. Creating new pool.");
             pools[original] = new Pool(original, numObjs);
         }
 
         pools[original].Prewarm(numObjs);
-    }
-
-    /// <summary>
-    /// Add the specified number of deactivated GameObjects to the pool made from the GameObject original is attached to.
-    /// </summary>
-    /// <param name="original">An existing Component attached to a GameObject that you've made a pool from.</param>
-    /// <param name="numObjs">The number of deactivated clones of the GameObject original is attached to you wish to add to the pool.</param>
-    public static void PreWarm(Component original, int numObjs)
-    {
-        if (original == null)
-        {
-            Debug.LogError("ObjectPool: Tried to PreWarm a pool for an object with a component that does not exist.");
-            return;
-        }
-
-        PreWarm(original.gameObject, numObjs);
     }
 
     /// <summary>
@@ -247,33 +256,12 @@ public static class ObjectPool
     /// <param name="original">An existing GameObject that you've made a pool from.</param>
     public static void Trim(GameObject original)
     {
-        if (original == null || !pools.ContainsKey(original))
+        if (ValidatePool(original, "DontDestroyOnLoad") != PoolErrors.NoError)
         {
-            Debug.LogError("ObjectPool: Tried to Trim a pool that does not exist.");
-            return;
-        }
-        else if (pools[original] == null)
-        {
-            Debug.LogError("ObjectPool: Tried to Trim a pool that no longer exists.");
             return;
         }
 
         pools[original].Trim();
-    }
-
-    /// <summary>
-    /// Sets the capacity of the underlying container for the pool made from the GameObject original is attached to to the number of GameObjects currently in the pool, if that number is less than a threshold value.
-    /// </summary>
-    /// <param name="original">An existing Component attached to a GameObject that you've made a pool from.</param>
-    public static void Trim(Component original)
-    {
-        if (original == null)
-        {
-            Debug.LogError("ObjectPool: Tried to Trim a pool for an object with a component that does not exist.");
-            return;
-        }
-
-        Trim(original.gameObject);
     }
 
     /// <summary>
@@ -282,33 +270,14 @@ public static class ObjectPool
     /// <param name="original">An existing GameObject that you've made a pool from.</param>
     public static void DestroyPool(GameObject original)
     {
-        if (!pools.ContainsKey(original))
+        PoolErrors poolError = ValidatePool(original, "DestroyPool");
+        if (poolError == PoolErrors.NullObject || poolError == PoolErrors.NoPool ) //no return if the pool is null
         {
-            Debug.LogError("ObjectPool: Tried to Destroy a pool that does not exist.");
             return;
-        }
-        else if (pools[original] == null)
-        {
-            Debug.LogError("ObjectPool: Tried to Destroy a pool that no longer exists."); //no return after this because we want to remove the null pool
         }
 
         pools[original].Cleanup();
         pools.Remove(original);
-    }
-
-    /// <summary>
-    /// Destroy the pool made from the GameObject original is attached to, along with all GameObjects associated with it.
-    /// </summary>
-    /// <param name="original">An existing Component attached to a GameObject that you've made a pool from.</param>
-    public static void DestroyPool(Component original)
-    {
-        if (original == null)
-        {
-            Debug.LogError("ObjectPool: Tried to DestroyPool using an object with a component that does not exist.");
-            return;
-        }
-
-        DestroyPool(original.gameObject);
     }
 
     /// <summary>
@@ -317,34 +286,18 @@ public static class ObjectPool
     /// <param name="original">An existing GameObject that you've made a pool from.</param>
     public static void DespawnPool(GameObject original)
     {
-        if (original == null || !pools.ContainsKey(original))
+        PoolErrors poolError = ValidatePool(original, "DespawnPool");
+        if (poolError == PoolErrors.NullPool)
         {
-            Debug.LogError("ObjectPool: Tried to DespawnPool a pool that does not exist.");
+            pools.Remove(original); //remove the null pool
             return;
         }
-        else if (pools[original] == null)
+        else if (poolError != PoolErrors.NoError)
         {
-            Debug.LogError("ObjectPool: Tried to DespawnAllPool a pool that no longer exists.");
-            pools.Remove(original); //remove the null pool
             return;
         }
 
         pools[original].DespawnAll();
-    }
-
-    /// <summary>
-    /// Despawn all active GameObjects associated with the pool made from the GameObject original is attached to.
-    /// </summary>
-    /// <param name="original">An existing Component attached to a GameObject that you've made a pool from.</param>
-    public static void DespawnPool(Component original)
-    {
-        if (original == null)
-        {
-            Debug.LogError("ObjectPool: Tried to DespawnAllPool using an object with a component that does not exist.");
-            return;
-        }
-
-        DespawnPool(original.gameObject);
     }
 
     /// <summary>
@@ -353,33 +306,12 @@ public static class ObjectPool
     /// <param name="original">An existing GameObject that you've made a pool from.</param>
     public static void DontDestroyOnLoad(GameObject original)
     {
-        if (original == null || !pools.ContainsKey(original))
+        if (ValidatePool(original, "DontDestroyOnLoad") != PoolErrors.NoError)
         {
-            Debug.LogError("ObjectPool: Tried to DontDestroyOnLoad a pool that does not exist.");
-            return;
-        }
-        else if (pools[original] == null)
-        {
-            Debug.LogError("ObjectPool: Tried to DontDestroyOnLoad a pool that no longer exists.");
             return;
         }
 
         pools[original].DestroyOnLoad(false);
-    }
-
-    /// <summary>
-    /// Makes all GameObjects associated with the pool made from the GameObject original is attached to not be destroyed automatically when loading a new scene.
-    /// </summary>
-    /// <param name="original">An existing Component attached to a GameObject that you've made a pool from.</param>
-    public static void DontDestroyOnLoad(Component original)
-    {
-        if (original == null)
-        {
-            Debug.LogError("ObjectPool: Tried to DontDestroyOnLoad using an object with a component that does not exist.");
-            return;
-        }
-
-        ObjectPool.DontDestroyOnLoad(original.gameObject);
     }
 
     /// <summary>
@@ -388,33 +320,12 @@ public static class ObjectPool
     /// <param name="original">An existing GameObject that you've made a pool from.</param>
     public static void DoDestroyOnLoad(GameObject original)
     {
-        if (original == null || !pools.ContainsKey(original))
+        if (ValidatePool(original, "DoDestroyOnLoad") != PoolErrors.NoError)
         {
-            Debug.LogError("ObjectPool: Tried to DoDestroyOnLoad a pool that does not exist.");
-            return;
-        }
-        else if (pools[original] == null)
-        {
-            Debug.LogError("ObjectPool: Tried to DoDestroyOnLoad a pool that no longer exists.");
             return;
         }
 
         pools[original].DestroyOnLoad(true);
-    }
-
-    /// <summary>
-    /// Makes all GameObjects associated with the pool made from the GameObject original is attached to be destroyed automatically when loading a new scene.
-    /// </summary>
-    /// <param name="original">An existing Component attached to a GameObject that you've made a pool from.</param>
-    public static void DoDestroyOnLoad(Component original)
-    {
-        if (original == null)
-        {
-            Debug.LogError("ObjectPool: Tried to DoDestroyOnLoad using an object with a component that does not exist.");
-            return;
-        }
-
-        DoDestroyOnLoad(original.gameObject);
     }
 
     /// <summary>
@@ -424,19 +335,13 @@ public static class ObjectPool
     /// <param name="maxSize">The maximum number of objects, active and inactive, in your pool.</param>
     public static void LimitPoolSize(GameObject original, int maxSize)
     {
-        if (original == null || !pools.ContainsKey(original))
+        if (ValidatePool(original, "LimitPoolSize") != PoolErrors.NoError)
         {
-            Debug.LogError("ObjectPool: Tried to LimitPoolSize a pool that does not exist.");
-            return;
-        }
-        else if (pools[original] == null)
-        {
-            Debug.LogError("ObjectPool: Tried to LimitPoolSize a pool that no longer exists.");
             return;
         }
         else if (maxSize < 1)
         {
-            Debug.LogError("ObjectPool: Tried to LimitPoolSize with a maxSize less than 1.");
+            LogError("Tried to LimitPoolSize with a maxSize less than 1.");
             return;
         }
 
@@ -451,14 +356,8 @@ public static class ObjectPool
     /// <returns>An nullable integer representing the value of the requested PoolProperty.</returns>
     public static int? GetProperty(GameObject original, PoolProperties property)
     {
-        if (original == null || !pools.ContainsKey(original))
+        if (ValidatePool(original, "GetProperty") != PoolErrors.NoError)
         {
-            Debug.LogError("ObjectPool: Tried to GetProperty a pool that does not exist.");
-            return null;
-        }
-        else if (pools[original] == null)
-        {
-            Debug.LogError("ObjectPool: Tried to GetProperty a pool that no longer exists.");
             return null;
         }
 
@@ -475,26 +374,9 @@ public static class ObjectPool
             case PoolProperties.MaxSize:
                 return pool.maxSize;
             default:
-                Debug.LogError("ObjectPool: Tried to GetProperty a pool property that does not exists.");
+                LogError("Tried to GetProperty a pool property that does not exists.");
                 return null;
         }
-    }
-
-    /// <summary>
-    /// Returns an integer representing the value of the requested property of the pool made from the GameObject original is attached to. Returns null if invalid arguments are used.
-    /// </summary>
-    /// <param name="original">An existing Component attached to a GameObject that you've made a pool from.</param>
-    /// <param name="property">An property of the pool made from the GameObject original is attached to.</param>
-    /// <returns>An nullable integer representing the value of the requested PoolProperty.</returns>
-    public static int? GetProperty(Component original, PoolProperties property)
-    {
-        if (original == null)
-        {
-            Debug.LogError("ObjectPool: Tried to GetProperty using an object with a component that does not exist.");
-            return null;
-        }
-
-        return GetProperty(original.gameObject, property);
     }
 
     //Internal function to spawn a pooled clone from user arguments, creating a new pool for original if necessary.
@@ -502,7 +384,7 @@ public static class ObjectPool
     {
         if (original == null)
         {
-            Debug.LogError("ObjectPool: Tried to Spawn() an object that does not exist.");
+            LogError("Tried to Spawn() an object that does not exist.");
             return null;
         }
 
@@ -517,7 +399,7 @@ public static class ObjectPool
         }
         else if (pools[original] == null) //create new Pool if one no longer exists for the given GameObject
         {
-            Debug.LogWarning("ObjectPool: Tried to Spawn from a pool that no longer exists. Creating new pool.");
+            LogWarning("Tried to Spawn from a pool that no longer exists. Creating new pool.");
             pools[original] = new Pool(original);
         }
 
@@ -548,7 +430,7 @@ public static class ObjectPool
     {
         if (original == null)
         {
-            Debug.LogError("ObjectPool: Tried to Spawn() an object with a Component that does not exist.");
+            LogError("Tried to Spawn() an object with a Component that does not exist.");
             return null;
         }
 
@@ -561,7 +443,7 @@ public static class ObjectPool
         }
         else
         {
-            Debug.LogError("ObjectPool: Tried to Spawn() an object with a component that does not exist on the pooled objects.");
+            LogError("Tried to Spawn() an object with a component that does not exist on the pooled objects.");
             Despawn(inst); //recycle spawned GameObject
             return null;
         }
@@ -589,6 +471,44 @@ public static class ObjectPool
         }
     }
 
+    //Consolidate frequent validation checks
+    static PoolErrors ValidatePool(GameObject original, string function)
+    {
+        if (original == null)
+        {
+            LogError(string.Format("Tried to {0} a pool for an object that does not exist.", function));
+            return PoolErrors.NullObject;
+        }
+        else if (!pools.ContainsKey(original))
+        {
+            LogError(string.Format("Tried to {0} a pool that does not exist.", function));
+            return PoolErrors.NoPool;
+        }
+        else if (pools[original] == null)
+        {
+            LogError(string.Format("Tried to {0} a pool that no longer exists.", function));
+            return PoolErrors.NullPool;
+        }
+
+        return PoolErrors.NoError;
+    }
+
+    //Logging functions with uniform tag
+    static void Log(string message, Object context = null)
+    {
+        m_logger.Log("ObjectPool", message, context);
+    }
+
+    static void LogWarning(string message, Object context = null)
+    {
+        m_logger.LogWarning("ObjectPool", message, context);
+    }
+
+    static void LogError(string message, Object context = null)
+    {
+        m_logger.LogError("ObjectPool", message, context);
+    }
+
 
 
     class Pool
@@ -611,7 +531,7 @@ public static class ObjectPool
         {
             inactiveObjects = new Stack<GameObject>(startSize);
             this.original = original;
-            maxSize = DEFAULT_MAX_POOL_SIZE;
+            maxSize = defaultMaxPoolSize;
 
             GameObject parentObject = new GameObject(original.name + " Pool"); //create the default parent for pooled GameObjects
             parentObjectTransform = parentObject.transform;
@@ -652,7 +572,7 @@ public static class ObjectPool
                 {
                     if (inactiveObjects.Count + activeObjectCount >= maxSize)
                     {
-                        Debug.Log("ObjectPool: Tried to Spawn more objects than pool allows.");
+                        Log("Tried to Spawn more objects than pool allows.");
                         return null;
                     }
 
@@ -667,7 +587,7 @@ public static class ObjectPool
             }
             else if (inactiveObjects.Count + activeObjectCount >= maxSize)
             {
-                Debug.Log("ObjectPool: Tried to Spawn more objects than pool allows.");
+                Log("Tried to Spawn more objects than pool allows.");
                 return null;
             }
             else //if there's an empty stack, Instantiate a new object
@@ -692,13 +612,13 @@ public static class ObjectPool
                 }
                 else
                 {
-                    Debug.Log("ObjectPool: Despawning to a pool that has more objects than pool allows. Destroying instead.", obj);
+                    Log("ObjectPool: Despawning to a pool that has more objects than pool allows. Destroying instead.", obj);
                     Object.Destroy(obj);
                 }
             }
             else
             {
-                Debug.LogWarning("ObjectPool: Tried to Despawn() object whose pool no longer exists. Destroying instead", obj);
+                LogWarning("ObjectPool: Tried to Despawn() object whose pool no longer exists. Destroying instead", obj);
                 Object.Destroy(obj);
             }
 
@@ -712,7 +632,7 @@ public static class ObjectPool
             {
                 if (inactiveObjects.Count + activeObjectCount >= maxSize)
                 {
-                    Debug.Log("ObjectPool: Tried to Spawn more objects than pool allows.");
+                    Log("Tried to Spawn more objects than pool allows.");
                     return;
                 }
 
@@ -800,7 +720,7 @@ public static class ObjectPool
             }
             else
             {
-                Debug.LogWarning("ObjectPool: Tried to Despawn() object whose pool no longer exists. Destroying instead", gameObject);
+                LogWarning("ObjectPool: Tried to Despawn() object whose pool no longer exists. Destroying instead", gameObject);
                 Destroy(gameObject);
             }
         }
